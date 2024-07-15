@@ -5,7 +5,7 @@ This project aims to predict the degradation of contaminants in groundwater usin
 
 ## Project Phases
 1. **Sprint 1**: The datasets for 2022 and 2023 were combined, initial Exploratory Data Analysis (EDA) , select the 90 most influential compounds and microorganisms, these 90 compounds and microorganisms were ranked by impact and the sampling point result labels were presented using formula.
-2. **Sprint 2**: Each team member used one model to predict contaminant degradation in groundwater, with a total of 6 models, including GBDT, XGBoost, GRU, SVM, CNN, and more. Different feature selection methods, data preprocessing methods, dataset partitioning methods, evaluation of model performance through confusion matrix and RMSE and MSE, and use of SHAP to increase model interpretability.
+2. **Sprint 2**: Each team member used one model to predict contaminant degradation in groundwater, with a total of 6 models, including GBDT, XGBoost, GRU, SVM, CNN, and more. Different feature selection methods, data preprocessing methods, dataset partitioning methods, evaluation of model performance through RMSE and MSE etc., and use of SHAP to increase model interpretability.
 3. **Sprint 3**: Final model optimization, deployment, and reporting.
 
 ## Project Clients
