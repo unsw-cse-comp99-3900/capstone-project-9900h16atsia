@@ -9,3 +9,4 @@ seaborn
 shap
 lime
 pandas
+reportlab

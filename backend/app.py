@@ -1,11 +1,21 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, explained_variance_score, median_absolute_error
 import logging
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import matplotlib.pyplot as plt
+import seaborn as sns
+import shap
+import lime
+import lime.lime_tabular
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -13,47 +23,42 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 
 
-gbdt = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
-rf = RandomForestRegressor(n_estimators=100, random_state=42)
-ridge = Ridge(alpha=1.0)
+UPLOAD_FOLDER = './uploaded_files'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
+@app.route('/upload_dataset', methods=['POST'])
+def upload_dataset():
+    if 'data_file' not in request.files:
+        return jsonify({'error': 'No data file part'}), 400
 
-
-def train_models(X, y):
-
-    gbdt.fit(X, y)
-    y_pred_gbdt = gbdt.predict(X)
-
-
-    X_blend = np.hstack((X, y_pred_gbdt.reshape(-1, 1)))
-
-
-    rf.fit(X_blend, y)
-    y_pred_rf = rf.predict(X_blend)
-
-
-    X_stack = np.vstack((y_pred_gbdt, y_pred_rf)).T
-
-
-    ridge.fit(X_stack, y)
-
-
+    data_file = request.files['data_file']
+    data_file_path = os.path.join(UPLOAD_FOLDER, data_file.filename)
+    data_file.save(data_file_path)
+    logging.info(f'Data file uploaded: {data_file_path}')
+    return jsonify({'message': 'Data file uploaded successfully'})
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    logging.info('Received a prediction request')
     if 'data_file' not in request.files or 'y_file' not in request.files:
-        logging.error('No file part in the request')
-        return jsonify({'error': 'No file part'})
+        return jsonify({'error': 'No file part'}), 400
 
     data_file = request.files['data_file']
     y_file = request.files['y_file']
 
+    data_file_path = os.path.join(UPLOAD_FOLDER, data_file.filename)
+    y_file_path = os.path.join(UPLOAD_FOLDER, y_file.filename)
 
-    data = pd.read_csv(data_file, delimiter='\t', header=0)
+    data_file.save(data_file_path)
+    y_file.save(y_file_path)
+    logging.info(f'Data file uploaded: {data_file_path}')
+    logging.info(f'Y file uploaded: {y_file_path}')
+
+    # 读取数据文件
+    data = pd.read_csv(data_file_path, delimiter='\t', header=0)
     data.set_index(data.columns[0], inplace=True)
 
-
+    # 数据预处理
     if 'Depth' in data.index:
         data.drop('Depth', inplace=True)
     if 'Unnamed: 47' in data.columns:
@@ -70,31 +75,81 @@ def predict():
     data.replace(0, pd.NA, inplace=True)
     data_filled = data.apply(lambda x: x.fillna(x.median()), axis=1)
 
-
-    y_data = pd.read_csv(y_file)
+    # 读取y值文件
+    y_data = pd.read_csv(y_file_path)
     y_data = y_data.replace('ND', np.nan)
     y_data = y_data.dropna(subset=['EDC_delta13C'])
     y_data_sorted = y_data.sort_values(by='EDC_delta13C', ascending=False)
     y_data_top_12 = y_data_sorted.tail(12)
     y = y_data_top_12['EDC_delta13C']
 
-
+    # 数据分割
     X_train, X_test, y_train, y_test = train_test_split(data_filled, y, test_size=0.3, random_state=42)
 
+    # Build a GBR/GBDT model with 100 estimators, a learning rate of 0.1, and a depth of 3.
+    gbdt = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
+    gbdt.fit(X_train, y_train)
 
-    train_models(X_train, y_train)
+    # Use GBDT model to predict and get the results.
+    y_train_pred_gbdt = gbdt.predict(X_train)
+    y_test_pred_gbdt = gbdt.predict(X_test)
 
+    # Integrate the predictions of GBDT into a new feature set.
+    X_train_blend = np.hstack((X_train, y_train_pred_gbdt.reshape(-1, 1)))
+    X_test_blend = np.hstack((X_test, y_test_pred_gbdt.reshape(-1, 1)))
 
-    y_pred_gbdt = gbdt.predict(X_test)
-    X_blend = np.hstack((X_test, y_pred_gbdt.reshape(-1, 1)))
-    y_pred_rf = rf.predict(X_blend)
-    X_stack = np.vstack((y_pred_gbdt, y_pred_rf)).T
-    y_pred_ridge = ridge.predict(X_stack)
+    # Build a RandomForest model.
+    rf = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf.fit(X_train_blend, y_train)
 
+    # Use the RandomForest model to predict and get the results.
+    y_train_pred_rf = rf.predict(X_train_blend)
+    y_test_pred_rf = rf.predict(X_test_blend)
 
-    logging.info("Prediction Results: %s", y_pred_ridge)
+    # Integrate the predictions of both GBDT and RandomForest into a new feature set.
+    X_train_stack = np.vstack((y_train_pred_gbdt, y_train_pred_rf)).T
+    X_test_stack = np.vstack((y_test_pred_gbdt, y_test_pred_rf)).T
 
-    return jsonify({'prediction': y_pred_ridge.tolist()})
+    # Build a Ridge regression model as the second layer model with regularization.
+    ridge = Ridge(alpha=1.0)
+    ridge.fit(X_train_stack, y_train)
+
+    # Use the Ridge model to predict and get the results.
+    y_train_pred_ridge = ridge.predict(X_train_stack)
+    y_test_pred_ridge = ridge.predict(X_test_stack)
+
+    # Evaluate performance on both training and test sets.
+    metrics = {
+        "Mean Squared Error": mean_squared_error,
+        "Root Mean Squared Error": lambda y_true, y_pred: np.sqrt(mean_squared_error(y_true, y_pred)),
+        "Mean Absolute Error": mean_absolute_error,
+        "R² Score": r2_score,
+        "Explained Variance Score": explained_variance_score,
+        "Median Absolute Error": median_absolute_error,
+    }
+
+    # Collect the results
+    results = []
+    results.append("Training Performance:")
+    for name, metric in metrics.items():
+        results.append(f"{name}: {metric(y_train, y_train_pred_ridge)}")
+
+    results.append("Testing Performance:")
+    for name, metric in metrics.items():
+        results.append(f"{name}: {metric(y_test, y_test_pred_ridge)}")
+
+    # Create the PDF
+    pdf_buffer = BytesIO()
+    p = canvas.Canvas(pdf_buffer, pagesize=letter)
+    y_pos = 750
+    for line in results:
+        p.drawString(100, y_pos, line)
+        y_pos -= 20
+    p.showPage()
+    p.save()
+    pdf_buffer.seek(0)
+
+    return send_file(pdf_buffer, as_attachment=True, download_name='prediction_results.pdf')
 
 
 if __name__ == '__main__':
