@@ -78,6 +78,40 @@ function App () {
     }
   };
 
+    const handleAnalysis = async () => {
+    if (!dataFile || !yFile) {
+      console.log('Please select both data and Y files.');
+      return;
+    }
+
+    console.log('Uploading files...');
+    const formData = new FormData();
+    formData.append('data_file', dataFile);
+    formData.append('y_file', yFile);
+
+    const backendUrl = process.env.REACT_APP_BACKEND_URL + '/analysis';
+    console.log('Request URL:', backendUrl);
+
+    try {
+      const response = await fetch(backendUrl, {
+        method: 'POST',
+        body: formData,
+      });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'analyse_results.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      console.log('Download initiated');
+    } catch (error) {
+      console.error('Error during upload:', error);
+    }
+  };
+
   return (
     <div className="App">
       <div className="animated-bg"></div>
@@ -105,13 +139,9 @@ function App () {
           </div>
         </div>
         <div className='function-container mt bottom-info flex-column' >
-          <div className='flex item-center w-full label-item ' >
-            <div className="label-title">Use the best madel to make predictions:</div>
-            <Button onClick={handlePrediction} variant="contained" color="primary" >Predict the degradation rate</Button>
-          </div>
           <div className='flex item-center w-full label-item' >
-            <div className="label-title">Monitor model preformce:</div>
-            <Button onClick={handlePrediction} variant="contained" color="secondary" >response rate</Button>
+            <div className="label-title">Monitor model performance:</div>
+            <Button onClick={handleAnalysis} variant="contained" color="secondary" >response rate</Button>
           </div>
         </div>
       </div>
