@@ -17,6 +17,8 @@ import lime
 import lime.lime_tabular
 import os
 from reportlab.lib.utils import ImageReader
+from datetime import datetime
+import time
 
 
 app = Flask(__name__)
@@ -100,7 +102,7 @@ def predict():
 
     # 数据分割
     X_train, X_test, y_train, y_test = train_test_split(data_filled, y, test_size=0.3, random_state=42)
-
+    start_time = time.time()
     # Build a GBR/GBDT model with 100 estimators, a learning rate of 0.1, and a depth of 3.
     gbdt = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
     gbdt.fit(X_train, y_train)
@@ -132,7 +134,8 @@ def predict():
     # Use the Ridge model to predict and get the results.
     y_train_pred_ridge = ridge.predict(X_train_stack)
     y_test_pred_ridge = ridge.predict(X_test_stack)
-
+    end_time = time.time()
+    prediction_time = end_time - start_time
     # Evaluate performance on both training and test sets.
     metrics = {
         "Mean Squared Error": mean_squared_error,
@@ -177,7 +180,9 @@ def predict():
     # Create the PDF
     pdf_buffer = BytesIO()
     p = canvas.Canvas(pdf_buffer, pagesize=letter)
-    y_pos = 750
+    y_pos = 650
+    prediction_time_str = f"Prediction Time: {prediction_time:.2f} seconds"
+    p.drawString(100, 750, prediction_time_str)
     for line in results:
         p.drawString(100, y_pos, line)
         y_pos -= 20
