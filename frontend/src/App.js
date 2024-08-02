@@ -5,7 +5,6 @@ import Button from '@material-ui/core/Button';
 function App () {
   const [dataFile, setDataFile] = useState(null);
   const [yFile, setYFile] = useState(null);
-  const [prediction, setPrediction] = useState(null);
 
   const handleDataFileChange = (event) => {
     setDataFile(event.target.files[0]);
@@ -46,7 +45,7 @@ function App () {
 
   const handlePrediction = async () => {
     if (!dataFile || !yFile) {
-      console.log('Please select both data and Y files.');
+      console.log('select both data and Y files.');
       return;
     }
 
@@ -54,10 +53,8 @@ function App () {
     const formData = new FormData();
     formData.append('data_file', dataFile);
     formData.append('y_file', yFile);
-
     const backendUrl = process.env.REACT_APP_BACKEND_URL + '/predict';
     console.log('Request URL:', backendUrl);
-
     try {
       const response = await fetch(backendUrl, {
         method: 'POST',
@@ -88,7 +85,6 @@ function App () {
     const formData = new FormData();
     formData.append('data_file', dataFile);
     formData.append('y_file', yFile);
-
     const backendUrl = process.env.REACT_APP_BACKEND_URL + '/analysis';
     console.log('Request URL:', backendUrl);
 
